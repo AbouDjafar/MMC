@@ -69,20 +69,9 @@ public class MMC {
     }
 
 //************ Constructeurs ********************************************************
-    public MMC(String fileURL){
-        modelIN(fileURL, this);
-        espaceNom = fileURL.replace(".txt", "");
-        /* test
-        System.out.println("Etats: ");
-        affichage(Etats);
-        System.out.println("Symboles: ");
-        affichage(Symboles);
-        System.out.println("Matrice de transition d'états: ");
-        affichage2(A);
-        System.out.println("Matrice d'observations: ");
-        affichage2(B);
-        System.out.println("Matrice des états initiaux: ");
-        affichage1(PI);*/
+    public MMC(String fileURI){
+        modelIN(fileURI, this);
+        espaceNom = fileURI.replace(".txt", "");
     }
 
     public MMC(MMC model){
@@ -301,8 +290,8 @@ public class MMC {
     }
 
 //*********************** Algorithmes de Baum-Welch ***********************************************
-//------------------- Baum-Welch mono séquence -----------------------------------------
-    public void BaumWelchMono(String O, MMC model, int MaxIter, double epsilon){
+    //------------------- Baum-Welch mono séquence -----------------------------------------
+    public MMC BaumWelchMonoSeq(String O, MMC model, int MaxIter, double epsilon, boolean impression){
         MMC model_bar = new MMC(model);
         double[][] A_bar, B_bar;
         double[] Pi_bar;
@@ -341,17 +330,81 @@ public class MMC {
             }
         }while (fin);
         // test
-        System.out.println("Iterations: "+iter+"\nNouvelle matrice A");
-        affichage2(model_bar.getA());
-        System.out.println("Nouvelle matrice B");
-        affichage2(model_bar.getB());
-        System.out.println("Nouveau vecteur Pi");
-        affichage1(model_bar.getPI());
+        System.out.println("Iterations: "+iter);
         //------------ écriture sur fichier du nouveau model -----------------------------
-        modelOUT(model.getEspaceNom()+"_optimized.txt", model_bar);
+        if (impression)
+            modelOUT(model.getEspaceNom()+"_optimized.txt", model_bar);
+
+        return model_bar;
     }
 
-//--------- Baum-Welch multi séquences --------------------------
+    //--------- Baum-Welch multi séquences --------------------------
+    public MMC BaumWelchMultiSeq(String[] O, MMC model, int MaxIter, double epsilon, boolean impression){
+        final int K = O.length;
+        MMC model_bar = new MMC(model);
+        double[][] A_bar, B_bar;
+        double[][][] alphas = new double[K][][], betas = new double[K][][], iGammas = new double[K][][];
+        double[][][][] Xis = new double[K][][][];
+        double numerateur, denominateur;
+        for (int k = 0; k < K; k++){
+            alphas[k] = getAlphas(O[k], model);
+            betas[k] = getBetas(O[k], model);
+            iGammas[k] = getIGammas(alphas[k], betas[k]);
+            Xis[k] = getXiTab(O[k], alphas[k], betas[k], model);
+        }
+        //----------- Optimisation du vecteur PI -----------------------
+        double[] Pi_bar = model_bar.getPI();
+        denominateur = K;
+        for (int i = 0; i < Pi_bar.length; i++){
+            numerateur = 0;
+            for (int k = 0; k < K; k++){
+                numerateur += iGammas[k][i][0];
+            }
+            Pi_bar[i] = numerateur / denominateur;
+        }
+        //---------- Optimisation de la matrice A -----------------------
+        A_bar = model_bar.getA();
+        for (int i = 0; i < A_bar.length; i++){
+            for (int j = 0; j < A_bar[0].length; j++){
+                numerateur = 0;
+                denominateur = 0;
+                for (int k = 0; k < K; k++){
+                    for (int t = 0; t < Xis[i][j].length; t++) {
+                        numerateur += Xis[k][i][j][t];
+                        denominateur += iGammas[k][i][t];
+                    }
+                }
+                A_bar[i][j] = numerateur / denominateur;
+            }
+        }
+        //--------------- Optimisation de la matrice B -----------------------
+        B_bar = model_bar.getB();
+        for (int i = 0; i < B_bar.length; i++){
+            for (int j = 0; j < B_bar[0].length; j++){
+                numerateur = 0;
+                denominateur = 0;
+                for (int k = 0; k < K; k++){
+                    ArrayList<Integer> Ul = getLIndex(Symboles[j].trim(), O[k]);
+                    if (Ul.isEmpty()) { // Si le symbole n'est pas contenu dans la séquence
+                        B_bar[i][j] = 0;
+                    }else {
+                        for (int t = 0; t < Ul.size(); t++)
+                            numerateur += iGammas[k][i][t];
+                    }
+                    for (int t = 0; t < iGammas[k][i].length; t++)
+                        denominateur += iGammas[k][i][t];
+                }
+                B_bar[i][j] = numerateur / denominateur;
+            }
+        }
+        model_bar.setPI(Pi_bar);
+        model_bar.setA(A_bar);
+        model_bar.setB(B_bar);
+        if (impression)
+            modelOUT(model.getEspaceNom()+"_optimized.txt", model_bar);
+
+        return model_bar;
+    }
 
 //***************** Lecture et écriture de modèle **************************************
     //--------------- Lecture et parsing des données du modèle à partir d'un fichier ------------------------
@@ -410,18 +463,20 @@ public class MMC {
         M.setPI(_PI);
     }
     //-------------- écriture du modèle -----------------------------------------------
-    protected void modelOUT(String outputFileURL, MMC model){
+    protected void modelOUT(String outputFileURI, MMC model){
         FileWriter fw;
+        String str;
         try {
-            fw = new FileWriter(outputFileURL);
-            fw.write(""+model.getEtats().length+"\n"+model.getSymboles().length+"\n");
+            fw = new FileWriter(outputFileURI);
+            str = model.getEtats().length+"\n";
+            fw.write(str);
+            str = model.getSymboles().length+"\n";
+            fw.write(str);
             litteralsWriter(model.getEtats(), fw);
             litteralsWriter(model.getSymboles(), fw);
-            doubleMatrixWriter(model.getA(), fw);
-            doubleMatrixWriter(model.getB(), fw);
-            for (double d : model.getPI())
-                fw.write(""+d+" ");
-            fw.write("\b");
+            doubleDimMatrixWriter(model.getA(), fw);
+            doubleDimMatrixWriter(model.getB(), fw);
+            singleDimMatrixWriter(model.getPI(), fw);
 
             fw.close();
         } catch (IOException e) {
@@ -432,49 +487,87 @@ public class MMC {
     private void litteralsWriter(String[] sTab, FileWriter fw) throws IOException {
         StringBuilder tmp = new StringBuilder();
         for (String s : sTab) tmp.append(s).append(" ");
-        int idx = tmp.lastIndexOf(" ");
-        tmp.deleteCharAt(idx);
+        tmp.deleteCharAt(tmp.length() - 1);
+        tmp.append("\n");
         fw.write(""+tmp.toString());
     }
-    private void doubleMatrixWriter(double[][] dTab, FileWriter fw) throws IOException {
+    private void doubleDimMatrixWriter(double[][] dTab, FileWriter fw) throws IOException {
+        StringBuilder tmp = new StringBuilder();
         for (double[] ligne : dTab){
             for (double cellule : ligne)
-                fw.write(""+cellule+" ");
-            fw.write("\b");
+                tmp.append(cellule).append(" ");
         }
-        fw.write("\n");
+        tmp.deleteCharAt(tmp.length() - 1);
+        tmp.append("\n");
+        fw.write(tmp.toString());
+    }
+    private void singleDimMatrixWriter(double[] sTab, FileWriter fw) throws IOException {
+        StringBuilder tmp = new StringBuilder();
+        for (double s : sTab) tmp.append(s).append(" ");
+        tmp.deleteCharAt(tmp.length() - 1);
+        tmp.append("\n");
+        fw.write(""+tmp.toString());
+    }
+
+    @Override
+    public String toString(){
+        StringBuilder str = new StringBuilder();
+        str.append("Etats: \n");
+        str.append(affichage(Etats));
+        str.append("Symboles: \n");
+        str.append(affichage(Symboles));
+        str.append("Matrice de transition d'états: \n");
+        str.append(affichage2(A));
+        str.append("Matrice d'observations: \n");
+        str.append(affichage2(B));
+        str.append("Matrice des états initiaux: \n");
+        str.append(affichage1(PI));
+
+        return str.toString();
     }
 
 //***************************** Affichages (test) ************************************
 
-    protected void affichage3(double[][][] o){
+    private String affichage3(double[][][] o){
+        StringBuilder str = new StringBuilder();
         for (double[][] o1: o) {
             for (double[] o2 : o1){
                 for (double o3 : o2)
-                    System.out.print(o3+" ");
-                System.out.println();
+                    str.append(o3).append(" ");
+                str.append("\n");
             }
         }
+
+        return str.toString();
     }
 
-    protected void affichage2(double[][] o){
+    private String affichage2(double[][] o){
+        StringBuilder str = new StringBuilder();
         for (double[] oT: o) {
             for (Double oi : oT)
-                System.out.print(oi+" ");
-            System.out.println();
+                str.append(oi).append(" ");
+            str.append("\n");
         }
+
+        return str.toString();
     }
-    protected void affichage(Object[] o){
+    private String affichage(Object[] o){
+        StringBuilder str = new StringBuilder();
         for (Object oi:o) {
-            System.out.print(oi+" ");
+            str.append(oi).append(" ");
         }
-        System.out.println();
+        str.append("\n");
+
+        return str.toString();
     }
-    protected void affichage1(double[] o){
+    private String affichage1(double[] o){
+        StringBuilder str = new StringBuilder();
         for (double oi:o) {
-            System.out.print(oi+" ");
+            str.append(oi).append(" ");
         }
-        System.out.println();
+        str.append("\n");
+
+        return str.toString();
     }
 
 }
