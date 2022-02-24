@@ -83,19 +83,22 @@ public class MMC {
         this.setSymboles(model.getSymboles());
     }
 
-    private int[] getO_indices(String O){
-    // Vecteur des indices de la suite d'observations. Au lieu d'avoir O = (o1 02...0n) on aura O_indice = (3 0 2 ...) où
-    // chaque chiffre correspond à l'indice du symbole correspondant dans le vecteur des Symboles S
-        String[] O_Tab = O.split(" ");
-        int[] O_indice = new int[O_Tab.length];
+    private int[] get_Tab_indices(String S, int param){
+    // Vecteur des indices de la suite d'observations. Au lieu d'avoir O = (o1 02...0n) ou Q = (q1 q2 ... qn) on aura O_indice = (3 0 2 ...) où
+    // chaque chiffre correspond à l'indice du symbole ou de l'état correspondant dans le vecteur des Symboles S
+    // param == 0 : Séquences et param == 0: Etats
+        param = (param == 1) ? param : 0;
+        String[] O_Tab = S.split(" ");
+        int[] S_indice = new int[O_Tab.length];
         int k = 0, compteur;
         boolean trouve;
+        String[][] SE = {Symboles, Etats};
         for (String o : O_Tab) {
             trouve = false;
             compteur = 0;
-            while (!trouve && compteur < Symboles.length) {
-                if (o.equals(Symboles[compteur].trim())) {
-                    O_indice[k] = compteur;
+            while (!trouve && compteur < SE[param].length) {
+                if (o.equals(SE[param][compteur].trim())) {
+                    S_indice[k] = compteur;
                     ++k;
                     trouve = true;
                 } else {
@@ -103,7 +106,20 @@ public class MMC {
                 }
             }
         }
-        return O_indice;
+        return S_indice;
+    }
+//******************* Evaluation Naive ************************************************
+    public double evaluationNaive(String O, String Q, MMC model){
+        double produit_O = 1, produit_Q;
+        int[] O_tab = get_Tab_indices(O, 0);
+        int[] Q_tab = get_Tab_indices(Q, 1);
+        produit_Q = PI[Q_tab[0]];
+        for (int i = 1; i < Q_tab.length; i++)
+            produit_Q *= A[Q_tab[i - 1]][Q_tab[i]];
+        for (int i = 0; i < O_tab.length; i++)
+            produit_O *= B[Q_tab[i]][O_tab[i]];
+
+        return (produit_Q * produit_O);
     }
 
 //******************* Variables forward *************************************************
@@ -112,7 +128,7 @@ public class MMC {
     }
     protected double[][] getAlphas(String O, MMC model) {
         // Fonction de calcul et remplissage de la matrice des variables Forward
-        int[] O_indice = getO_indices(O);
+        int[] O_indice = get_Tab_indices(O, 0);
         double[][] alpha = new double[Etats.length][O_indice.length];
         if (O_indice.length > 0) {
             for (int j = 0; j < alpha.length; j++) // Calcul de alpha[1][j]
@@ -136,7 +152,7 @@ public class MMC {
     }
     protected double[][] getBetas(String O, MMC model) {
         // Fonction de calcul et remplissage de la matrice des variables Backward
-        int[] O_indice = getO_indices(O);
+        int[] O_indice = get_Tab_indices(O,0);
         double[][] beta = new double[Etats.length][O_indice.length];
         if (O_indice.length > 0) {
             for (int j = 0; j < beta.length; j++) // Calcul de beta[T][i]
@@ -178,7 +194,7 @@ public class MMC {
 
     //---------------------- Création de la matrice des Xi -----------------------------------------
     public double[][][] getXiTab(String O, double[][] alpha, double[][] beta, MMC model){
-        int[] O_i = getO_indices(O);
+        int[] O_i = get_Tab_indices(O,0);
         double ev = evaluer(alpha, beta);
         double[][][] Xi = new double[A.length][A.length][O_i.length-1];
         for (int i = 0; i < Xi.length; i++){
