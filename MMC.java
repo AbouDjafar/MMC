@@ -111,15 +111,65 @@ public class MMC {
 //******************* Evaluation Naive ************************************************
     public double evaluationNaive(String O, String Q, MMC model){
         double produit_O = 1, produit_Q;
+        double[] _PI = model.getPI();
+        double[][] _A = model.getA(), _B = model.getB();
         int[] O_tab = get_Tab_indices(O, 0);
         int[] Q_tab = get_Tab_indices(Q, 1);
-        produit_Q = PI[Q_tab[0]];
+        produit_Q = _PI[Q_tab[0]];
         for (int i = 1; i < Q_tab.length; i++)
-            produit_Q *= A[Q_tab[i - 1]][Q_tab[i]];
+            produit_Q *= _A[Q_tab[i - 1]][Q_tab[i]];
         for (int i = 0; i < O_tab.length; i++)
-            produit_O *= B[Q_tab[i]][O_tab[i]];
+            produit_O *= _B[Q_tab[i]][O_tab[i]];
 
         return (produit_Q * produit_O);
+    }
+
+//****************** Algorithme de Viterbi ********************************************
+    private double[] AMax(double[] tab){
+        double max = 0;
+        int argmax = -1;
+        for (int i = 0; i < tab.length; i++){
+            if (max < tab[i]){
+                max = tab[i];
+                argmax = i;
+            }
+        }
+
+        return (new double[]{argmax, max});
+    }
+
+    public String viterbi(String O, MMC model){
+        final int T = O.split(" ").length, N = model.getEtats().length;
+        int[] O_Tab = get_Tab_indices(O, 0), chemin = new int[T];
+        double[] _Pi = model.getPI(), tmp = new double[N], maxis; //tmp: juste un tableau tampon et maxis servira de support aux résultats de la fonction AMax pour avoir max er argmax
+        double[][] _A = model.getA(), _B = model.getB(), delta; // delta matrice des proba de passer par un noeud du treillis
+        int[][] psi; //matrice des indices des états (noeuds du treilli)
+        delta = new double[N][T];
+        psi = new int[N][T];
+        for(int i = 0; i < N; i++) { // A l'initialisation
+            delta[i][0] = _Pi[i] * _B[i][O_Tab[0]];
+            psi[i][0] = i;
+        }
+        for (int t = 1; t < T; t++){ // on procéde temps par temps
+            for (int i = 0; i < N; i++){ // ensuite état par état
+                for (int j = 0; j < N; j++) // chaque état est susceptible d'être la débouchée d'uns transition au temps t-1
+                    tmp[j] = delta[j][t-1] * _A[i][j];
+                maxis = AMax(tmp);
+                delta[i][t] = maxis[1] * _B[i][O_Tab[t]];
+                psi[i][t] = (int)maxis[0];
+            }
+        }
+        //Construction du chemin optimal
+        for (int i = 0; i < N - 1; i++)
+            tmp[i] = delta[i][T-1];
+        chemin[T-1] = (int)AMax(tmp)[0];
+        for (int t = T - 2; t >= 0; t--)
+            chemin[t] = psi[chemin[t+1]][t+1];
+        StringBuilder Q = new StringBuilder();
+        for (int i : chemin)
+            Q.append(Etats[i].trim()).append(" ");
+
+        return Q.toString();
     }
 
 //******************* Variables forward *************************************************
@@ -422,6 +472,72 @@ public class MMC {
         return model_bar;
     }
 
+    public MMC BaumWelchMultiSeq2(String[] O, MMC model, int MaxIter, double epsilon, boolean impression){ // Comme dans le cours
+        final int K = O.length;
+        MMC model_bar = new MMC(model);
+        double[][] A_bar, B_bar;
+        double[][][] alphas = new double[K][][], betas = new double[K][][], iGammas = new double[K][][];
+        double[][][][] Xis = new double[K][][][];
+        double Y1, Y2, Y3, Y4;
+        for (int k = 0; k < K; k++){
+            alphas[k] = getAlphas(O[k], model);
+            betas[k] = getBetas(O[k], model);
+            iGammas[k] = getIGammas(alphas[k], betas[k]);
+            Xis[k] = getXiTab(O[k], alphas[k], betas[k], model);
+        }
+        //----------- Optimisation du vecteur PI -----------------------
+        double[] Pi_bar = model_bar.getPI();
+        for (int i = 0; i < Pi_bar.length; i++){
+            Y1 = 0;
+            for (int k = 0; k < K; k++){
+                Y1 += iGammas[k][i][0];
+            }
+            Pi_bar[i] = Y1 / K;
+        }
+        //---------- Optimisation de la matrice A -----------------------
+        A_bar = model_bar.getA();
+        for (int i = 0; i < A_bar.length; i++){
+            for (int j = 0; j < A_bar[0].length; j++){
+                Y2 = 0;
+                Y3 = 0;
+                for (int k = 0; k < K; k++){
+                    for (int t = 0; t < Xis[i][j].length; t++) {
+                        Y2 += Xis[k][i][j][t];
+                        Y3 += iGammas[k][i][t];
+                    }
+                }
+                A_bar[i][j] = Y2 / Y3;
+            }
+        }
+        //--------------- Optimisation de la matrice B -----------------------
+        B_bar = model_bar.getB();
+        for (int i = 0; i < B_bar.length; i++){
+            for (int j = 0; j < B_bar[0].length; j++){
+                Y4 = 0;
+                Y3 = 0;
+                for (int k = 0; k < K; k++){
+                    ArrayList<Integer> Ul = getLIndex(Symboles[j].trim(), O[k]);
+                    if (Ul.isEmpty()) { // Si le symbole n'est pas contenu dans la séquence
+                        B_bar[i][j] = 0;
+                    }else {
+                        for (int t = 0; t < Ul.size(); t++)
+                            Y4 += iGammas[k][i][t];
+                    }
+                    for (int t = 0; t < iGammas[k][i].length; t++)
+                        Y3 += iGammas[k][i][t];
+                }
+                B_bar[i][j] = Y4 / Y3;
+            }
+        }
+        model_bar.setPI(Pi_bar);
+        model_bar.setA(A_bar);
+        model_bar.setB(B_bar);
+        if (impression)
+            modelOUT(model.getEspaceNom()+"_optimized.txt", model_bar);
+
+        return model_bar;
+    }
+
 //***************** Lecture et écriture de modèle **************************************
     //--------------- Lecture et parsing des données du modèle à partir d'un fichier ------------------------
     protected void modelIN(String fileURL, MMC M) {
@@ -567,10 +683,10 @@ public class MMC {
 
         return str.toString();
     }
-    private String affichage(Object[] o){
+    private String affichage(String[] o){
         StringBuilder str = new StringBuilder();
-        for (Object oi:o) {
-            str.append(oi).append(" ");
+        for (String oi:o) {
+            str.append(oi.trim()).append(" ");
         }
         str.append("\n");
 
