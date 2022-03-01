@@ -13,7 +13,6 @@
     sur une seule ligne: s1 s2 s3 ... sT
 */
 import java.io.*;
-import java.util.ArrayList;
 
 public class MMC {
     private String espaceNom;
@@ -83,7 +82,7 @@ public class MMC {
         this.setSymboles(model.getSymboles());
     }
 
-    private int[] get_Tab_indices(String S, int param){
+    protected int[] get_Tab_indices(String S, int param){
     // Vecteur des indices de la suite d'observations. Au lieu d'avoir O = (o1 02...0n) ou Q = (q1 q2 ... qn) on aura O_indice = (3 0 2 ...) où
     // chaque chiffre correspond à l'indice du symbole ou de l'état correspondant dans le vecteur des Symboles S
     // param == 0 : Séquences et param == 0: Etats
@@ -124,425 +123,11 @@ public class MMC {
         return (produit_Q * produit_O);
     }
 
-//****************** Algorithme de Viterbi ********************************************
-    private double[] AMax(double[] tab){
-        double max = 0;
-        int argmax = -1;
-        for (int i = 0; i < tab.length; i++){
-            if (max < tab[i]){
-                max = tab[i];
-                argmax = i;
-            }
-        }
-
-        return (new double[]{argmax, max});
-    }
-
-    public String viterbi(String O, MMC model){
-        final int T = O.split(" ").length, N = model.getEtats().length;
-        int[] O_Tab = get_Tab_indices(O, 0), chemin = new int[T];
-        double[] _Pi = model.getPI(), tmp = new double[N], maxis; //tmp: juste un tableau tampon et maxis servira de support aux résultats de la fonction AMax pour avoir max er argmax
-        double[][] _A = model.getA(), _B = model.getB(), delta; // delta matrice des proba de passer par un noeud du treillis
-        int[][] psi; //matrice des indices des états (noeuds du treilli)
-        delta = new double[N][T];
-        psi = new int[N][T];
-        for(int i = 0; i < N; i++) { // A l'initialisation
-            delta[i][0] = _Pi[i] * _B[i][O_Tab[0]];
-            psi[i][0] = i;
-        }
-        for (int t = 1; t < T; t++){ // on procéde temps par temps
-            for (int i = 0; i < N; i++){ // ensuite état par état
-                for (int j = 0; j < N; j++) // chaque état est susceptible d'être la débouchée d'uns transition au temps t-1
-                    tmp[j] = delta[j][t-1] * _A[i][j];
-                maxis = AMax(tmp);
-                delta[i][t] = maxis[1] * _B[i][O_Tab[t]];
-                psi[i][t] = (int)maxis[0];
-            }
-        }
-        //Construction du chemin optimal
-        for (int i = 0; i < N - 1; i++)
-            tmp[i] = delta[i][T-1];
-        chemin[T-1] = (int)AMax(tmp)[0];
-        for (int t = T - 2; t >= 0; t--)
-            chemin[t] = psi[chemin[t+1]][t+1];
-        StringBuilder Q = new StringBuilder();
-        for (int i : chemin)
-            Q.append(Etats[i].trim()).append(" ");
-
-        return Q.toString();
-    }
-
-//******************* Variables forward *************************************************
-    protected double[][] getAlphas(String O) {
-        return getAlphas(O, this);
-    }
-    protected double[][] getAlphas(String O, MMC model) {
-        // Fonction de calcul et remplissage de la matrice des variables Forward
-        int[] O_indice = get_Tab_indices(O, 0);
-        double[][] alpha = new double[Etats.length][O_indice.length];
-        if (O_indice.length > 0) {
-            for (int j = 0; j < alpha.length; j++) // Calcul de alpha[1][j]
-                alpha[j][0] = model.getPI()[j] * model.getB()[j][O_indice[0]];
-            for (int t = 1; t < O_indice.length; t++) { // Calcul de alpha[t+1:T][j]
-                for (int j = 0; j < model.getA().length; j++) {
-                    double tmp = 0;
-                    for (int i = 0; i < model.getA().length; i++) {
-                        tmp += alpha[i][t - 1] * model.getA()[i][j];
-                    }
-                    alpha[j][t] = model.getB()[j][O_indice[t]] * tmp;
-                }
-            }
-        }
-        return alpha;
-    }
-
-//*************************** variables backward ************************************************
-    protected double[][] getBetas(String O) {
-        return getBetas(O, this);
-    }
-    protected double[][] getBetas(String O, MMC model) {
-        // Fonction de calcul et remplissage de la matrice des variables Backward
-        int[] O_indice = get_Tab_indices(O,0);
-        double[][] beta = new double[Etats.length][O_indice.length];
-        if (O_indice.length > 0) {
-            for (int j = 0; j < beta.length; j++) // Calcul de beta[T][i]
-                beta[j][O_indice.length-1] = 1;
-            for(int t = O_indice.length-1; t > 0; t--){ // Calcul de beta[T-1:1][i]
-                for (int i = 0; i < model.getA().length; i++){
-                    double tmp = 0;
-                    for (int j = 0; j < model.getA().length; j++)
-                        tmp += model.getB()[j][O_indice[t]]*beta[j][t]*model.getA()[i][j];
-                    beta[i][t-1] = tmp;
-                }
-            }
-        }
-        return beta;
-    }
-
-//*********************** evaluation d'un MMC selon forward-backward ******************************
-    public double evaluer(double[][] alpha, double[][] beta){
-        double ev = 0.0;
-        // Choix aléatoire de t barre
-        int t_bar = (int) (Math.random() * alpha[0].length);
-        //Calcul de Pr(O|Lambda)
-        for (int i = 0; i < A.length; i++)
-            ev += alpha[i][t_bar]*beta[i][t_bar];
-
-        return ev;
-    }
-    public double evaluer(String O, MMC model){
-        double ev = 0.0;
-        double[][] alpha = getAlphas(O, model);
-        double[][] beta = getBetas(O, model);
-        return evaluer(alpha, beta);
-    }
-    public double evaluer(String O){ // Evaluation selon l'algo de Forward-Backward
-        return evaluer(O, this);
-    }
-
-// ******************* Optimisation des paramètres du MMC **************************
-
-    //---------------------- Création de la matrice des Xi -----------------------------------------
-    public double[][][] getXiTab(String O, double[][] alpha, double[][] beta, MMC model){
-        int[] O_i = get_Tab_indices(O,0);
-        double ev = evaluer(alpha, beta);
-        double[][][] Xi = new double[A.length][A.length][O_i.length-1];
-        for (int i = 0; i < Xi.length; i++){
-            for (int j = 0; j < Xi[0].length; j++){
-                for (int t = 0; t < Xi[0][0].length; t++){
-                    Xi[i][j][t] = (alpha[i][t] * model.getA()[i][j] * model.getB()[j][O_i[t+1]] * beta[j][t+1]) / ev;
-                }
-            }
-        }
-        return Xi;
-    }
-    public double[][][] getXiTab(String O){
-        double[][] alpha = getAlphas(O);
-        double[][] beta = getBetas(O);
-        return getXiTab(O, alpha, beta, this);
-    }
-
-    //----------------- Optimisation de Pi --------------------------------------------
-    public double[] getOptmizedPI(double[][] iGammas){
-        double[] PI_barre = new double[PI.length];
-        for (int i = 0; i < PI_barre.length; i++) {
-            PI_barre[i] = iGammas[i][0];
-        }
-        return PI_barre;
-    }
-
-    protected double[][] getIGammas2(double[][][] Xi){ // Comme dans le cours
-        // iGamma = somme de j allant de 1 à N de Xi_t(i,j)
-        double[][] GTab = new double[Xi[0].length][Xi[0][0].length];
-        for (int i = 0; i < GTab.length; i++){
-            for (int t = 0; t < GTab[0].length; t++){
-                double tmp = 0;
-                for (int j = 0; j < A.length; j++)
-                    tmp += Xi[i][j][t];
-                GTab[i][t] = tmp;
-            }
-        }
-        return GTab;
-    }
-
-    protected double[][] getIGammas(double[][] alpha, double[][] beta){
-        // iGamma = beta_t(i) * alpha_t(i) / Pr(O|lambda)
-        double[][] GTab = new double[alpha.length][alpha[0].length];
-        double ev = evaluer(alpha, beta);
-        for (int t = 0; t < GTab[0].length; t++){
-            for (int i = 0; i < GTab.length; i++){
-                GTab[i][t] = alpha[i][t] * beta[i][t] / ev;
-            }
-        }
-        return GTab;
-    }
-
-    // ---------------- Optimisation de la matrice des transitions d'états ------------------------
-    protected double[][] getOptimizedA(double[][][] Xi, double[][] iGammas){
-        // A_bar = somme t=1:T-1 de Xi_t(i,j) / somme t=1:T-1 de gamma_t(i)
-        double[][] A_bar = new double[A.length][A.length];
-        for (int i = 0; i < A.length; i++){
-            for (int j = 0; j < A[0].length; j++) {
-                double numerateur = 0, denominateur = 0;
-                for (int t = 0; t < Xi[0][0].length; t++)
-                    numerateur += Xi[i][j][t];
-                for (int t = 0; t < Xi[0][0].length; t++)
-                    denominateur += iGammas[i][t];
-                A_bar[i][j] = numerateur / denominateur;
-            }
-        }
-        return A_bar;
-    }
-
-    //-------------------- Optimisation de la matrice des observations --------------------------------------
-    protected double[][] getOptimizedB(double[][] iGammas, String O){
-        double[][] B_bar = new double[B.length][B[0].length];
-        final int T = O.split(" ").length;
-        for (int i = 0; i < B_bar.length; i++){
-            for (int j = 0; j < B_bar[0].length; j++){
-                ArrayList<Integer> Ul = getLIndex(Symboles[j].trim(), O);
-                if (Ul.isEmpty()) { // Si le symbole n'est pas contenu dans la séquence
-                    B_bar[i][j] = 0;
-                }else {
-                    double numerateur = 0;
-                    double denominateur = 0;
-                    for (int t : Ul){  // Somme_t inclu dans Ul de gamma_t(i)
-                        numerateur += iGammas[i][t];
-                    }
-                    for (int t = 0; t < T; t++){ // Somme_t=1:T de gamma_t[i]
-                        denominateur += iGammas[i][t];
-                    }
-                    B_bar[i][j] = numerateur / denominateur;
-                }
-            }
-        }
-        return  B_bar;
-    }
-
-    protected ArrayList<Integer> getLIndex(String l, String O){
-        /*
-        * Méthode pour déterminer les positions auxquelles un symbole du modèle apparait dans la séquence O
-        */
-        ArrayList<Integer> lIndex = new ArrayList<>();
-        String[] Os = O.split(" ");
-        int i = 0;
-        do{
-            if (l.equals(Os[i])){
-                lIndex.add(i);
-            }
-            ++i;
-        }while (i < Os.length);
-        return (lIndex);
-    }
-
-//*********************** Algorithmes de Baum-Welch ***********************************************
-    //------------------- Baum-Welch mono séquence -----------------------------------------
-    public MMC BaumWelchMonoSeq(String O, MMC model, int MaxIter, double epsilon, boolean impression){
-        MMC model_bar = new MMC(model);
-        double[][] A_bar, B_bar;
-        double[] Pi_bar;
-        // Calculs des variables forward et backward
-        double[][] alpha, beta, iGammas, alpha_bar, beta_bar;
-        double[][][] Xi;
-        boolean fin = false;
-        double ev, ev_bar;
-        int iter = 0;
-        do{
-            alpha = getAlphas(O, model);
-            beta = getBetas(O, model);
-            Xi = getXiTab(O, alpha, beta, model);
-            iGammas = getIGammas(alpha, beta);
-            // Calcul des optimisés des éléments du modèle
-            A_bar = getOptimizedA(Xi, iGammas);
-            B_bar = getOptimizedB(iGammas, O);
-            Pi_bar = getOptmizedPI(iGammas);
-            // Recalcul des variables forward et backward mais avec les données optimisées
-            model_bar.setA(A_bar);
-            model_bar.setB(B_bar);
-            model_bar.setPI(Pi_bar);
-            alpha_bar = getAlphas(O, model_bar);
-            beta_bar = getBetas(O, model_bar);
-            // Calcul de la valeur de l'évaluation du modèle initial et du modèle optimisé
-            ev = evaluer(alpha, beta);
-            ev_bar = evaluer(alpha_bar, beta_bar);
-            iter++;
-            if ((ev_bar - ev <= epsilon) || (iter > MaxIter))
-                fin = true;
-            else {
-                // Lambda = Lambda_bar
-                model.setA(model_bar.getA());
-                model.setB(model_bar.getB());
-                model.setPI(model_bar.getPI());
-            }
-        }while (fin);
-        // test
-        System.out.println("Iterations: "+iter);
-        //------------ écriture sur fichier du nouveau model -----------------------------
-        if (impression)
-            modelOUT(model.getEspaceNom()+"_optimized.txt", model_bar);
-
-        return model_bar;
-    }
-
-    //--------- Baum-Welch multi séquences --------------------------
-    public MMC BaumWelchMultiSeq(String[] O, MMC model, int MaxIter, double epsilon, boolean impression){
-        final int K = O.length;
-        MMC model_bar = new MMC(model);
-        double[][] A_bar, B_bar;
-        double[][][] alphas = new double[K][][], betas = new double[K][][], iGammas = new double[K][][];
-        double[][][][] Xis = new double[K][][][];
-        double numerateur, denominateur;
-        for (int k = 0; k < K; k++){
-            alphas[k] = getAlphas(O[k], model);
-            betas[k] = getBetas(O[k], model);
-            iGammas[k] = getIGammas(alphas[k], betas[k]);
-            Xis[k] = getXiTab(O[k], alphas[k], betas[k], model);
-        }
-        //----------- Optimisation du vecteur PI -----------------------
-        double[] Pi_bar = model_bar.getPI();
-        denominateur = K;
-        for (int i = 0; i < Pi_bar.length; i++){
-            numerateur = 0;
-            for (int k = 0; k < K; k++){
-                numerateur += iGammas[k][i][0];
-            }
-            Pi_bar[i] = numerateur / denominateur;
-        }
-        //---------- Optimisation de la matrice A -----------------------
-        A_bar = model_bar.getA();
-        for (int i = 0; i < A_bar.length; i++){
-            for (int j = 0; j < A_bar[0].length; j++){
-                numerateur = 0;
-                denominateur = 0;
-                for (int k = 0; k < K; k++){
-                    for (int t = 0; t < Xis[i][j].length; t++) {
-                        numerateur += Xis[k][i][j][t];
-                        denominateur += iGammas[k][i][t];
-                    }
-                }
-                A_bar[i][j] = numerateur / denominateur;
-            }
-        }
-        //--------------- Optimisation de la matrice B -----------------------
-        B_bar = model_bar.getB();
-        for (int i = 0; i < B_bar.length; i++){
-            for (int j = 0; j < B_bar[0].length; j++){
-                numerateur = 0;
-                denominateur = 0;
-                for (int k = 0; k < K; k++){
-                    ArrayList<Integer> Ul = getLIndex(Symboles[j].trim(), O[k]);
-                    if (Ul.isEmpty()) { // Si le symbole n'est pas contenu dans la séquence
-                        B_bar[i][j] = 0;
-                    }else {
-                        for (int t = 0; t < Ul.size(); t++)
-                            numerateur += iGammas[k][i][t];
-                    }
-                    for (int t = 0; t < iGammas[k][i].length; t++)
-                        denominateur += iGammas[k][i][t];
-                }
-                B_bar[i][j] = numerateur / denominateur;
-            }
-        }
-        model_bar.setPI(Pi_bar);
-        model_bar.setA(A_bar);
-        model_bar.setB(B_bar);
-        if (impression)
-            modelOUT(model.getEspaceNom()+"_optimized.txt", model_bar);
-
-        return model_bar;
-    }
-
-    public MMC BaumWelchMultiSeq2(String[] O, MMC model, int MaxIter, double epsilon, boolean impression){ // Comme dans le cours
-        final int K = O.length;
-        MMC model_bar = new MMC(model);
-        double[][] A_bar, B_bar;
-        double[][][] alphas = new double[K][][], betas = new double[K][][], iGammas = new double[K][][];
-        double[][][][] Xis = new double[K][][][];
-        double Y1, Y2, Y3, Y4;
-        for (int k = 0; k < K; k++){
-            alphas[k] = getAlphas(O[k], model);
-            betas[k] = getBetas(O[k], model);
-            iGammas[k] = getIGammas(alphas[k], betas[k]);
-            Xis[k] = getXiTab(O[k], alphas[k], betas[k], model);
-        }
-        //----------- Optimisation du vecteur PI -----------------------
-        double[] Pi_bar = model_bar.getPI();
-        for (int i = 0; i < Pi_bar.length; i++){
-            Y1 = 0;
-            for (int k = 0; k < K; k++){
-                Y1 += iGammas[k][i][0];
-            }
-            Pi_bar[i] = Y1 / K;
-        }
-        //---------- Optimisation de la matrice A -----------------------
-        A_bar = model_bar.getA();
-        for (int i = 0; i < A_bar.length; i++){
-            for (int j = 0; j < A_bar[0].length; j++){
-                Y2 = 0;
-                Y3 = 0;
-                for (int k = 0; k < K; k++){
-                    for (int t = 0; t < Xis[i][j].length; t++) {
-                        Y2 += Xis[k][i][j][t];
-                        Y3 += iGammas[k][i][t];
-                    }
-                }
-                A_bar[i][j] = Y2 / Y3;
-            }
-        }
-        //--------------- Optimisation de la matrice B -----------------------
-        B_bar = model_bar.getB();
-        for (int i = 0; i < B_bar.length; i++){
-            for (int j = 0; j < B_bar[0].length; j++){
-                Y4 = 0;
-                Y3 = 0;
-                for (int k = 0; k < K; k++){
-                    ArrayList<Integer> Ul = getLIndex(Symboles[j].trim(), O[k]);
-                    if (Ul.isEmpty()) { // Si le symbole n'est pas contenu dans la séquence
-                        B_bar[i][j] = 0;
-                    }else {
-                        for (int t = 0; t < Ul.size(); t++)
-                            Y4 += iGammas[k][i][t];
-                    }
-                    for (int t = 0; t < iGammas[k][i].length; t++)
-                        Y3 += iGammas[k][i][t];
-                }
-                B_bar[i][j] = Y4 / Y3;
-            }
-        }
-        model_bar.setPI(Pi_bar);
-        model_bar.setA(A_bar);
-        model_bar.setB(B_bar);
-        if (impression)
-            modelOUT(model.getEspaceNom()+"_optimized.txt", model_bar);
-
-        return model_bar;
-    }
-
 //***************** Lecture et écriture de modèle **************************************
     //--------------- Lecture et parsing des données du modèle à partir d'un fichier ------------------------
     protected void modelIN(String fileURL, MMC M) {
         File model = new File(fileURL);
-        FileReader fr;
+        BufferedReader br;
         StringBuilder s = new StringBuilder();
         double[][] _A, _B;
         double[] _PI;
@@ -550,11 +135,12 @@ public class MMC {
         int k;
         //------------------- Lecture du fichier source -----------------------------------
         try {
-            fr = new FileReader(model);
-            while((k = fr.read()) != -1){
-                s.append((char) k);
+            br = new BufferedReader(new FileReader(model));
+            String str;
+            while((str = br.readLine()) != null){
+                s.append(str).append('\n');
             }
-            fr.close();
+            br.close();
         } catch (IOException e){
             e.printStackTrace();
         }
@@ -596,34 +182,34 @@ public class MMC {
     }
     //-------------- écriture du modèle -----------------------------------------------
     protected void modelOUT(String outputFileURI, MMC model){
-        FileWriter fw;
+        BufferedWriter bw;
         String str;
         try {
-            fw = new FileWriter(outputFileURI);
+            bw = new BufferedWriter(new FileWriter(outputFileURI));
             str = model.getEtats().length+"\n";
-            fw.write(str);
+            bw.write(str);
             str = model.getSymboles().length+"\n";
-            fw.write(str);
-            litteralsWriter(model.getEtats(), fw);
-            litteralsWriter(model.getSymboles(), fw);
-            doubleDimMatrixWriter(model.getA(), fw);
-            doubleDimMatrixWriter(model.getB(), fw);
-            singleDimMatrixWriter(model.getPI(), fw);
+            bw.write(str);
+            litteralsWriter(model.getEtats(), bw);
+            litteralsWriter(model.getSymboles(), bw);
+            doubleDimMatrixWriter(model.getA(), bw);
+            doubleDimMatrixWriter(model.getB(), bw);
+            singleDimMatrixWriter(model.getPI(), bw);
 
-            fw.close();
+            bw.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void litteralsWriter(String[] sTab, FileWriter fw) throws IOException {
+    private void litteralsWriter(String[] sTab, BufferedWriter bw) throws IOException {
         StringBuilder tmp = new StringBuilder();
         for (String s : sTab) tmp.append(s).append(" ");
         tmp.deleteCharAt(tmp.length() - 1);
         tmp.append("\n");
-        fw.write(""+tmp.toString());
+        bw.write(""+tmp.toString());
     }
-    private void doubleDimMatrixWriter(double[][] dTab, FileWriter fw) throws IOException {
+    private void doubleDimMatrixWriter(double[][] dTab, BufferedWriter bw) throws IOException {
         StringBuilder tmp = new StringBuilder();
         for (double[] ligne : dTab){
             for (double cellule : ligne)
@@ -631,14 +217,14 @@ public class MMC {
         }
         tmp.deleteCharAt(tmp.length() - 1);
         tmp.append("\n");
-        fw.write(tmp.toString());
+        bw.write(tmp.toString());
     }
-    private void singleDimMatrixWriter(double[] sTab, FileWriter fw) throws IOException {
+    private void singleDimMatrixWriter(double[] sTab, BufferedWriter bw) throws IOException {
         StringBuilder tmp = new StringBuilder();
         for (double s : sTab) tmp.append(s).append(" ");
         tmp.deleteCharAt(tmp.length() - 1);
         tmp.append("\n");
-        fw.write(""+tmp.toString());
+        bw.write(""+tmp.toString());
     }
 
     @Override
