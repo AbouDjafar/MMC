@@ -144,7 +144,7 @@ public class MMC {
         } catch (IOException e){
             e.printStackTrace();
         }
-        //----------------- Allocation des dimensions aux différents tableaux -------------------------
+        //----------------- Attribution des dimensions aux différents tableaux -------------------------
         String[] sTab = s.toString().split("\n");
         _Etats = new String[Integer.parseInt(sTab[0].trim())];
         _Symboles = new String[Integer.parseInt(sTab[1].trim())];
@@ -197,6 +197,8 @@ public class MMC {
             singleDimMatrixWriter(model.getPI(), bw);
 
             bw.close();
+            // Affichage du fichier créé dans son repertoire
+            Runtime.getRuntime().exec("explorer.exe /select, " + outputFileURI.replace("/", "\\"));
         } catch (IOException e) {
             e.printStackTrace();
         }

@@ -25,7 +25,7 @@ public class Viterbi {
             delta[i][0] = _Pi[i] * _B[i][O_Tab[0]];
             psi[i][0] = i;
         }
-        for (int t = 1; t < T; t++){ // on procéde temps par temps
+        for (int t = 1; t < T; t++){ // on procède temps par temps
             for (int i = 0; i < N; i++){ // ensuite état par état
                 for (int j = 0; j < N; j++) // chaque état est susceptible d'être la débouchée d'uns transition au temps t-1
                     tmp[j] = delta[j][t-1] * _A[i][j];

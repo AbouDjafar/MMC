@@ -1,5 +1,6 @@
 public class ForwardBackward {
 
+//*************************** variables forward ************************************************
     protected double[][] getAlphas(String O, MMC model) {
         // Fonction de calcul et remplissage de la matrice des variables Forward
         int[] O_indice = model.get_Tab_indices(O, 0);
@@ -20,7 +21,7 @@ public class ForwardBackward {
         return alpha;
     }
 
-    //*************************** variables backward ************************************************
+//*************************** variables backward ************************************************
     protected double[][] getBetas(String O, MMC model) {
         // Fonction de calcul et remplissage de la matrice des variables Backward
         int[] O_indice = model.get_Tab_indices(O,0);
@@ -40,7 +41,7 @@ public class ForwardBackward {
         return beta;
     }
 
-    //*********************** evaluation d'un MMC selon forward-backward ******************************
+//*********************** evaluation d'un MMC selon forward-backward ******************************
     public double evaluer(double[][] alpha, double[][] beta, MMC model){
         double ev = 0.0;
         // Choix aléatoire de t barre
@@ -52,7 +53,6 @@ public class ForwardBackward {
         return ev;
     }
     public double evaluer(String O, MMC model){
-        double ev = 0.0;
         double[][] alpha = getAlphas(O, model);
         double[][] beta = getBetas(O, model);
         return evaluer(alpha, beta, model);
