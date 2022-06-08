@@ -1,4 +1,6 @@
 import java.util.Scanner;
+import javax.swing.*;
+import javax.swing.filechooser.FileView;
 
 public class IHM {
     private static Scanner sc;
@@ -30,6 +32,7 @@ public class IHM {
                     "3. optimiser le modele selon une sequence de symboles (Baum-Welch mono)\n" +
                     "4. optimiser le modele selon plusieurs sequences de symboles (Baum-Welch multi)\n" +
                     "5. ressortir la sequence d'etats (Viterbi) \n" +
+                    "6. Afficher le modele \n" +
                     "0. Quitter \n" +
                     "-> Que voulez-vous faire [0-5]: ");
             sc = new Scanner(System.in);
@@ -39,7 +42,7 @@ public class IHM {
                     System.out.println("Fin");
                 break;
                 case 1:
-                    //TODO: Charger un nouveau model
+                    model = ajoutModel();
                 break;
                 case 2:
                     double ev = evaluation(model);
@@ -54,8 +57,11 @@ public class IHM {
                 case 5:
                     System.out.println(viterbi(model));
                 break;
+                case 6:
+                    System.out.println(model.toString());
+                break;
                 default:
-                    System.err.println("un chiffre compris entre 0 et 5 svp");
+                    System.err.println("un chiffre compris entre 0 et 6 svp");
                 break;
             }
         }while (usr_ch != 0);
@@ -85,10 +91,28 @@ public class IHM {
         String O = lectureSequence();
         return (new Viterbi().viterbi(O, model));
     }
+    private static MMC ajoutModel(){
+        System.out.println("/!\\ Formatage des fichier d'entrée des MMC /!\\\n" +
+                "    ligne 1: nombre total des etats (N)\n" +
+                "    ligne 2: nombre total des symboles (T)\n" +
+                "    ligne 3: lister les etats, separes par un espace (e1 e2 e3 e4 ... eN)\n" +
+                "    ligne 4: lister les symboles, separes par un espace (s1 s2 s3 s4 ... sT)\n" +
+                "    ligne 5: derouler la matrice de transition d'etats (A11 A12 .. A1N A21 A22 ... A2N A31 A32 ... A3N ... AN1 AN2 ... ANN)\n" +
+                "    ligne 6: derouler la matrice d'observations (B11 B12 ...B1T B21 B22 ... B2T ... BN1 BN2 ... BNT)\n" +
+                "    ligne 7: lister le vecteur des états initiaux (pi1 pi2 pi3 ... piN)" +
+                "    \n(Le selecteur de fichier apparait souvent en arriere-plan)");
+
+        JFileChooser selecteur = new JFileChooser();
+        selecteur.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        selecteur.showOpenDialog(new JPanel());
+        String fichier = selecteur.getSelectedFile().getAbsolutePath();
+        return (new MMC(fichier));
+    }
 
     private static String lectureSequence() {
         System.out.println("Entrez une séquence de longueur n (O_1 O_2 ... O_n):");
-        sc.nextLine();
-        return (sc.hasNextLine()) ? sc.nextLine() : null;
+        sc = new Scanner(System.in);
+        return sc.nextLine();
     }
+
 }
